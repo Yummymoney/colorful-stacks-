@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Colorful Stacks</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #ffffff;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            height: 100%;
+            max-height: 700px;
+            background: #1e293b;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            display: block;
+            background: #0f172a;
+            flex-grow: 1;
+            cursor: pointer;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-weight: 800;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        #score-board {
+            text-align: center;
+        }
+        #best-score {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+        #start-screen, #gameover-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            transition: opacity 0.3s ease;
+        }
+        h1 {
+            font-size: 36px;
+            margin: 0 0 10px 0;
+            background: linear-gradient(45deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+        p {
+            color: #94a3b8;
+            font-size: 16px;
+            margin-bottom: 30px;
+            text-align: center;
+            padding: 0 20px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #38bdf8, #6366f1);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.4);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+        .btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 8px rgba(56, 189, 248, 0.4);
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <div class="header">
+                <div id="score-board">
+                    <div id="current-score">0</div>
+                    <div id="best-score">BEST: 0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen">
+            <h1>COLORFUL STACKS</h1>
+            <p>Tap anywhere to drop blocks and build the highest tower!</p>
+            <button class="btn" id="start-btn">PLAY NOW</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-screen" class="hidden">
+            <h1>GAME OVER</h1>
+            <p id="final-score-text">You scored 0</p>
+            <button class="btn" id="restart-btn">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('gameover-screen');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const currentScoreEl = document.getElementById('current-score');
+        const bestScoreEl = document.getElementById('best-score');
+        const finalScoreText = document.getElementById('final-score-text');
+
+        // Game Variables
+        let score = 0;
+        let bestScore = localStorage.getItem('stack_best_score') || 0;
+        bestScoreEl.innerText = `BEST: ${bestScore}`;
+
+        let gamePlaying = false;
+        let stack = [];
+        let debris = [];
+        let scrollY = 0;
+        let targetScrollY = 0;
+
+        const blockHeight = 30;
+        let initialWidth = 200;
+        let currentWidth = initialWidth;
+        let blockSpeed = 3;
+        let currentLayer = 1;
+        let hue = 180;
+
+        let movingBlock = {
+            x: 0,
+            y: 0,
+            width: initialWidth,
+            direction: 1
+        };
+
+        // Resize Canvas to Container
+        function resize() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function initGame() {
+            stack = [];
+            debris = [];
+            score = 0;
+            currentLayer = 1;
+            blockSpeed = 3;
+            currentWidth = initialWidth;
+            hue = Math.random() * 360;
+            scrollY = 0;
+            targetScrollY = 0;
+            currentScoreEl.innerText = score;
+
+            // Base block
+            let baseWidth = 200;
+            let baseX = (canvas.width - baseWidth) / 2;
+            let baseY = canvas.height - 100;
+
+            stack.push({
+                x: baseX,
+                y: baseY,
+                width: baseWidth,
+                height: blockHeight,
+                color: `hsl(${hue}, 80%, 60%)`
+            });
+
+            spawnNextBlock();
+            gamePlaying = true;
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        }
+
+        function spawnNextBlock() {
+            currentLayer++;
+            blockSpeed = 3 + Math.floor(currentLayer / 5) * 0.5; // Increases speed gradually
+            hue = (hue + 15) % 360;
+
+            let prevBlock = stack[stack.length - 1];
+            movingBlock.width = prevBlock.width;
+            movingBlock.y = prevBlock.y - blockHeight;
+            movingBlock.direction = Math.random() > 0.5 ? 1 : -1;
+            
+            if (movingBlock.direction > 0) {
+                movingBlock.x = -movingBlock.width;
+            } else {
+                movingBlock.x = canvas.width;
+            }
+
+            // Adjust camera target
+            if (currentLayer > 6) {
+                targetScrollY = (currentLayer - 6) * blockHeight;
+            }
+        }
+
+        function dropBlock() {
+            if (!gamePlaying) return;
+
+            let prevBlock = stack[stack.length - 1];
+            let difference = movingBlock.x - prevBlock.x;
+            let absoluteDiff = Math.abs(difference);
+
+            if (absoluteDiff >= movingBlock.width) {
+                // Completely missed
+                gameOver();
+                return;
+            }
+
+            // Successful cut / stack
+            let overlappingWidth = movingBlock.width - absoluteDiff;
+            let clippedWidth = absoluteDiff;
+
+            // Debris falling down effect
+            let debrisX = difference > 0 ? prevBlock.x + overlappingWidth : movingBlock.x;
+            debris.push({
+                x: debrisX,
+                y: movingBlock.y,
+                width: clippedWidth,
+                height: blockHeight,
+                color: `hsl(${hue}, 80%, 50%)`,
+                vx: difference > 0 ? 2 : -2,
+                vy: 0
+            });
+
+            // Update current block width
+            currentWidth = overlappingWidth;
+            let finalX = difference > 0 ? prevBlock.x : movingBlock.x;
+
+            stack.push({
+                x: finalX,
+                y: movingBlock.y,
+                width: currentWidth,
+                height: blockHeight,
+                color: `hsl(${hue}, 80%, 60%)`
+            });
+
+            score++;
+            currentScoreEl.innerText = score;
+
+            spawnNextBlock();
+        }
+
+        function gameOver() {
+            gamePlaying = false;
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('stack_best_score', bestScore);
+                bestScoreEl.innerText = `BEST: ${bestScore}`;
+            }
+            finalScoreText.innerText = `You stacked ${score} blocks!`;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // Input Controls (Tap or Click)
+        window.addEventListener('pointerdown', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            if (gamePlaying) {
+                dropBlock();
+            }
+        });
+
+        startBtn.addEventListener('click', initGame);
+        restartBtn.addEventListener('click', initGame);
+
+        // Game Loop
+        function update() {
+            if (gamePlaying) {
+                // Move current block
+                movingBlock.x += blockSpeed * movingBlock.direction;
+
+                // Bounce off walls
+                if (movingBlock.x + movingBlock.width > canvas.width) {
+                    movingBlock.direction = -1;
+                } else if (movingBlock.x < 0) {
+                    movingBlock.direction = 1;
+                }
+            }
+
+            // Smooth camera scroll
+            scrollY += (targetScrollY - scrollY) * 0.1;
+
+            // Update debris physics
+            for (let i = debris.length - 1; i >= 0; i--) {
+                let d = debris[i];
+                d.y += 5; // Fall down
+                d.x += d.vx;
+                if (d.y > canvas.height + 100) {
+                    debris.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(0, scrollY);
+
+            // Draw stacked blocks
+            for (let block of stack) {
+                ctx.fillStyle = block.color;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+                
+                // Glossy top highlight
+                ctx.fillStyle = "rgba(255,255,255,0.15)";
+                ctx.fillRect(block.x, block.y, block.width, block.height / 3);
+            }
+
+            // Draw moving block
+            if (gamePlaying) {
+                ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
+                ctx.fillRect(movingBlock.x, movingBlock.y, movingBlock.width, blockHeight);
+                ctx.fillStyle = "rgba(255,255,255,0.15)";
+                ctx.fillRect(movingBlock.x, movingBlock.y, movingBlock.width, blockHeight / 3);
+            }
+
+            // Draw falling debris
+            for (let d of debris) {
+                ctx.fillStyle = d.color;
+                ctx.fillRect(d.x, d.y, d.width, d.height);
+            }
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // Initialize display before start
+        initGame();
+        gamePlaying = false;
+        startScreen.classList.remove('hidden');
+        loop();
+    </script>
+</body>
+</html>
